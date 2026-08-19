@@ -4,6 +4,12 @@
 
 This document covers the unified release workflow for stable and nightly desktop releases.
 
+Forks that do not have Blacksmith runners or production npm/Vercel/AUR credentials should use
+[`.github/workflows/desktop-release.yml`](../../.github/workflows/desktop-release.yml) instead. That
+workflow builds macOS and Linux desktop artifacts on GitHub-hosted runners and publishes GitHub
+Releases on `main` pushes, `v*.*.*` tags, and manual dispatch. It does not publish brew, AUR, npm,
+or the hosted web app.
+
 ## What the workflow does
 
 - Workflow: `.github/workflows/release.yml`

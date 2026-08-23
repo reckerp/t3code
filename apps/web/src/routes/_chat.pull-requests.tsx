@@ -11,6 +11,7 @@ import type {
   PullRequestListState,
   SourceControlProviderKind,
 } from "@t3tools/contracts";
+import { PULL_REQUEST_FOCUS_TEAM_ME } from "@t3tools/contracts/settings";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ChevronDownIcon,
@@ -26,11 +27,19 @@ import {
   RefreshCwIcon,
   SearchIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   filterPullRequestsByInvolvement,
-  filterPullRequestsByFocusTeam,
+  applyPullRequestAuthorFilter,
   findPullRequestFocusTeam,
   findScopedProject,
   groupPullRequestsByInvolvement,
@@ -40,6 +49,7 @@ import {
   narrowPullRequestsToFilters,
   mergePullRequestDiffStats,
   partitionPullRequestsWithPriority,
+  pullRequestAuthorFiltersConflict,
   pullRequestEntryKey,
   pullRequestEntryViewer,
   rankPullRequestMatches,
@@ -237,7 +247,12 @@ function PullRequestsRouteView() {
     () => findPullRequestFocusTeam(focusTeams, search.focusTeam),
     [focusTeams, search.focusTeam],
   );
-  const focusTeamFilterActive = search.focusTeam === "me" || activeFocusTeam !== undefined;
+  const focusTeamFilterActive =
+    search.focusTeam === PULL_REQUEST_FOCUS_TEAM_ME || activeFocusTeam !== undefined;
+  const authorFiltersConflict = pullRequestAuthorFiltersConflict(
+    search.involvement,
+    search.focusTeam,
+  );
 
   const { environments } = useEnvironments();
   // Every connected environment that has said it can list pull requests. Sorted, so the query
@@ -453,9 +468,9 @@ function PullRequestsRouteView() {
     [navigate],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!settingsHydrated) return;
-    if (search.focusTeam === undefined || search.focusTeam === "me") return;
+    if (search.focusTeam === undefined || search.focusTeam === PULL_REQUEST_FOCUS_TEAM_ME) return;
     if (activeFocusTeam === undefined) {
       updateSearch({ focusTeam: undefined });
     }
@@ -1022,12 +1037,13 @@ function PullRequestsRouteView() {
   const entries = useMemo(() => {
     const known = ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []);
     const involvementEntries = filterPullRequestsByInvolvement(known, viewers, search.involvement);
-    const focusTeamEntries =
-      search.focusTeam === "me"
-        ? filterPullRequestsByInvolvement(involvementEntries, viewers, "authored")
-        : activeFocusTeam === undefined
-          ? involvementEntries
-          : filterPullRequestsByFocusTeam(involvementEntries, activeFocusTeam.members);
+    const focusTeamEntries = applyPullRequestAuthorFilter(
+      involvementEntries,
+      viewers,
+      search.focusTeam,
+      activeFocusTeam,
+      settingsHydrated,
+    );
     // The hosts search more than the row shows — a body, a review, a commit message — so once
     // their answer is in, narrowing it again here would throw away matches the reader asked for.
     // The local pass stands in for the answer that has not arrived yet, and for the hosts that
@@ -1066,6 +1082,7 @@ function PullRequestsRouteView() {
     search.focusTeam,
     search.involvement,
     searchingHosts,
+    settingsHydrated,
     showingCarried,
     typedParsed.text,
     viewers,
@@ -1141,12 +1158,13 @@ function PullRequestsRouteView() {
     // that the filters above just took out of the feed.
     const narrow = (rows: ReadonlyArray<EnvironmentPullRequestEntry> | undefined) => {
       if (rows === undefined) return rows;
-      const focusFiltered =
-        search.focusTeam === "me"
-          ? filterPullRequestsByInvolvement(rows, viewers, "authored")
-          : activeFocusTeam === undefined
-            ? rows
-            : filterPullRequestsByFocusTeam(rows, activeFocusTeam.members);
+      const focusFiltered = applyPullRequestAuthorFilter(
+        rows,
+        viewers,
+        search.focusTeam,
+        activeFocusTeam,
+        settingsHydrated,
+      );
       return !hasLocalFilters
         ? focusFiltered
         : focusFiltered.filter((entry) =>
@@ -1176,6 +1194,7 @@ function PullRequestsRouteView() {
     scopeKey,
     search.focusTeam,
     search.involvement,
+    settingsHydrated,
     viewers,
   ]);
 
@@ -1389,6 +1408,11 @@ function PullRequestsRouteView() {
           refreshing={refreshing}
           onRefresh={() => void refreshFromHost()}
           query={typedQuery}
+          filterHint={
+            authorFiltersConflict
+              ? "Authors is set to Me, which only shows pull requests you opened. Switch involvement to All or Authored, or choose All authors under Authors."
+              : undefined
+          }
           filtered={
             search.state !== "open" ||
             search.involvement !== "all" ||

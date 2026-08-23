@@ -7,6 +7,7 @@ import type {
   SourceControlProviderKind,
 } from "@t3tools/contracts";
 import type { PullRequestFocusTeam } from "@t3tools/contracts/settings";
+import { PULL_REQUEST_FOCUS_TEAM_ME } from "@t3tools/contracts/settings";
 import {
   CircleCheckIcon,
   CircleDashedIcon,
@@ -339,39 +340,35 @@ export function PullRequestFiltersMenu({
           options={CHECKS_OPTIONS}
           onChange={(next) => onFilters(withFilter("checks", next))}
         />
-        {focusTeams.length > 0 ? (
-          <>
-            <MenuSeparator />
-            <MenuRadioGroup
-              value={focusTeamId ?? ALL_FOCUS_TEAMS_VALUE}
-              onValueChange={(next) => {
-                onFocusTeam(next === ALL_FOCUS_TEAMS_VALUE ? undefined : next);
-              }}
-            >
-              <MenuGroupLabel>Authors</MenuGroupLabel>
-              <MenuRadioItem value={ALL_FOCUS_TEAMS_VALUE}>
-                <span className="flex min-w-0 items-center gap-2">
-                  <LayersIcon aria-hidden className="size-3.5" />
-                  All authors
-                </span>
-              </MenuRadioItem>
-              <MenuRadioItem value="me">
-                <span className="flex min-w-0 items-center gap-2">
-                  <UserIcon aria-hidden className="size-3.5" />
-                  Me
-                </span>
-              </MenuRadioItem>
-              {focusTeams.map((team) => (
-                <MenuRadioItem key={team.id} value={team.id}>
-                  <span className="flex min-w-0 items-center gap-2">
-                    <UsersIcon aria-hidden className="size-3.5" />
-                    <span className="min-w-0 truncate">{team.name}</span>
-                  </span>
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-          </>
-        ) : null}
+        <MenuSeparator />
+        <MenuRadioGroup
+          value={focusTeamId ?? ALL_FOCUS_TEAMS_VALUE}
+          onValueChange={(next) => {
+            onFocusTeam(next === ALL_FOCUS_TEAMS_VALUE ? undefined : next);
+          }}
+        >
+          <MenuGroupLabel>Authors</MenuGroupLabel>
+          <MenuRadioItem value={ALL_FOCUS_TEAMS_VALUE}>
+            <span className="flex min-w-0 items-center gap-2">
+              <LayersIcon aria-hidden className="size-3.5" />
+              All authors
+            </span>
+          </MenuRadioItem>
+          <MenuRadioItem value={PULL_REQUEST_FOCUS_TEAM_ME}>
+            <span className="flex min-w-0 items-center gap-2">
+              <UserIcon aria-hidden className="size-3.5" />
+              Me
+            </span>
+          </MenuRadioItem>
+          {focusTeams.map((team) => (
+            <MenuRadioItem key={team.id} value={team.id}>
+              <span className="flex min-w-0 items-center gap-2">
+                <UsersIcon aria-hidden className="size-3.5" />
+                <span className="min-w-0 truncate">{team.name}</span>
+              </span>
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
         {hostOptions.length > 2 ? (
           <>
             <MenuSeparator />

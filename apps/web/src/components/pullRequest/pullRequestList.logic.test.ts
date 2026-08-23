@@ -4,8 +4,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   filterPullRequestsByInvolvement,
   filterPullRequestsByFocusTeam,
+  applyPullRequestAuthorFilter,
+  findPullRequestFocusTeam,
   findScopedProject,
   mergePullRequestLists,
+  pullRequestAuthorFiltersConflict,
   pullRequestEntryKey,
   pullRequestEnvironmentSetKey,
   groupPullRequestsByInvolvement,
@@ -26,6 +29,7 @@ import {
   resolveSelectedEnvironmentId,
   type EnvironmentPullRequestEntry,
 } from "./pullRequestList.logic";
+import { PULL_REQUEST_FOCUS_TEAM_ME } from "@t3tools/contracts/settings";
 
 const VIEWERS = { "github.com": "Bilal" } as const;
 const NO_VIEWERS = {} as const;
@@ -1035,6 +1039,10 @@ describe("pull request focus team filtering", () => {
     expect(filterPullRequestsByFocusTeam(entries, undefined)).toEqual(entries);
   });
 
+  it("returns nothing when a focus team is active but has no members", () => {
+    expect(filterPullRequestsByFocusTeam(entries, [])).toEqual([]);
+  });
+
   it("parses pasted logins on commas, spaces, and newlines", () => {
     expect(parsePullRequestFocusTeamMembers("alice, bob\ncarol  dave")).toEqual([
       "alice",
@@ -1042,5 +1050,47 @@ describe("pull request focus team filtering", () => {
       "carol",
       "dave",
     ]);
+  });
+
+  it("strips a leading @ from pasted logins", () => {
+    expect(parsePullRequestFocusTeamMembers("@alice, @bob")).toEqual(["alice", "bob"]);
+    expect(
+      filterPullRequestsByFocusTeam(
+        [entry({ number: 1, author: { login: "alice", name: null, avatarUrl: null } })],
+        parsePullRequestFocusTeamMembers("@alice"),
+      ).map((row) => row.number),
+    ).toEqual([1]);
+  });
+
+  it("does not treat me as a focus team id", () => {
+    expect(
+      findPullRequestFocusTeam(
+        [{ id: "platform", name: "Platform", members: ["alice"] }],
+        PULL_REQUEST_FOCUS_TEAM_ME,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("waits for client settings before applying a team filter", () => {
+    const team = { id: "platform", name: "Platform", members: ["alice"] };
+    const rows = [
+      entry({ number: 1, author: { login: "alice", name: null, avatarUrl: null } }),
+      entry({ number: 2, author: { login: "bob", name: null, avatarUrl: null } }),
+    ];
+    expect(
+      applyPullRequestAuthorFilter(rows, NO_VIEWERS, "platform", team, false).map(
+        (row) => row.number,
+      ),
+    ).toEqual([1, 2]);
+    expect(
+      applyPullRequestAuthorFilter(rows, NO_VIEWERS, "platform", team, true).map(
+        (row) => row.number,
+      ),
+    ).toEqual([1]);
+  });
+
+  it("reports when Me conflicts with Reviewing involvement", () => {
+    expect(pullRequestAuthorFiltersConflict("reviewing", PULL_REQUEST_FOCUS_TEAM_ME)).toBe(true);
+    expect(pullRequestAuthorFiltersConflict("all", PULL_REQUEST_FOCUS_TEAM_ME)).toBe(false);
   });
 });

@@ -68,10 +68,15 @@ export const PullRequestFocusTeam = Schema.Struct({
   id: PullRequestFocusTeamId,
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
   members: Schema.Array(PullRequestFocusTeamMember).check(
+    Schema.isMinLength(1),
     Schema.isMaxLength(MAX_PULL_REQUEST_FOCUS_TEAM_MEMBERS),
   ),
 });
 export type PullRequestFocusTeam = typeof PullRequestFocusTeam.Type;
+
+/** URL sentinel for filtering to the signed-in viewer's own pull requests. Not a team id. */
+export const PULL_REQUEST_FOCUS_TEAM_ME = "me" as const;
+export type PullRequestFocusTeamFilter = typeof PULL_REQUEST_FOCUS_TEAM_ME | PullRequestFocusTeamId;
 export const MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS = 1;
 export const MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS = 90;
 export const SidebarAutoSettleAfterDays = Schema.Number.check(

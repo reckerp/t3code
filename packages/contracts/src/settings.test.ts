@@ -127,6 +127,40 @@ describe("ClientSettings pull request focus teams", () => {
       }).pullRequestFocusTeams,
     ).toEqual([{ id: "platform-abc", name: "Platform", members: ["alice", "bob"] }]);
   });
+
+  it("rejects a focus team with no members", () => {
+    expect(() =>
+      decodeClientSettings({
+        pullRequestFocusTeams: [{ id: "platform-abc", name: "Platform", members: [] }],
+      }),
+    ).toThrow();
+  });
+
+  it("rejects more than twenty focus teams", () => {
+    expect(() =>
+      decodeClientSettings({
+        pullRequestFocusTeams: Array.from({ length: 21 }, (_, index) => ({
+          id: `team-${index}`,
+          name: `Team ${index}`,
+          members: ["alice"],
+        })),
+      }),
+    ).toThrow();
+  });
+
+  it("rejects more than fifty members on one team", () => {
+    expect(() =>
+      decodeClientSettings({
+        pullRequestFocusTeams: [
+          {
+            id: "platform",
+            name: "Platform",
+            members: Array.from({ length: 51 }, (_, index) => `user-${index}`),
+          },
+        ],
+      }),
+    ).toThrow();
+  });
 });
 
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {

@@ -1,6 +1,7 @@
 import {
   MAX_PULL_REQUEST_FOCUS_TEAM_MEMBERS,
   MAX_PULL_REQUEST_FOCUS_TEAMS,
+  PULL_REQUEST_FOCUS_TEAM_ME,
   type PullRequestFocusTeam,
 } from "@t3tools/contracts/settings";
 import { PlusIcon, Trash2Icon } from "lucide-react";
@@ -22,7 +23,8 @@ function createFocusTeamId(name: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 40);
   const suffix = Math.random().toString(36).slice(2, 10);
-  return `${slug.length > 0 ? slug : "team"}-${suffix}`;
+  const id = `${slug.length > 0 ? slug : "team"}-${suffix}`;
+  return id === PULL_REQUEST_FOCUS_TEAM_ME ? `team-${suffix}` : id;
 }
 
 function formatMembers(members: ReadonlyArray<string>): string {
@@ -106,7 +108,7 @@ export function PullRequestFocusTeamsSettingsSection() {
     >
       <SettingsRow
         title="Author groups"
-        description="Named groups of GitHub usernames for narrowing the pull request list to people you follow."
+        description="Named groups of GitHub usernames for narrowing the pull request list to people you follow. Filtering applies to pull requests already loaded from your hosts — it does not change how many are fetched initially."
       />
       {teams.length === 0 && editingId === null ? (
         <SettingsRow

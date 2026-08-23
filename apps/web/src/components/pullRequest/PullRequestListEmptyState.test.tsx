@@ -18,6 +18,7 @@ function textOf(node: ReactNode): string {
 const baseProps = {
   query: "",
   filtered: false,
+  filterHint: undefined as string | undefined,
   searching: false,
   hasProjects: true,
   canLoadMore: false,
@@ -50,5 +51,13 @@ describe("PullRequestListEmptyState", () => {
     expect(render({ query: "fix" })).toContain("Check again");
     expect(render({ canLoadMore: true })).toContain("Load more pull requests");
     expect(render({ refreshing: true })).toContain("Checking...");
+  });
+
+  it("explains conflicting author filters when a hint is given", () => {
+    const text = render({
+      filtered: true,
+      filterHint: "Authors is set to Me, which only shows pull requests you opened.",
+    });
+    expect(text).toContain("Authors is set to Me");
   });
 });

@@ -5,6 +5,13 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { PullRequestFiltersMenu, pullRequestProjectKey } from "./PullRequestListFilters";
 
+function textOf(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join(" ");
+  if (!isValidElement(node)) return "";
+  return textOf((node as ReactElement<{ children?: ReactNode }>).props.children);
+}
+
 function findValueChange(
   node: ReactNode,
 ):
@@ -23,6 +30,32 @@ function findValueChange(
       }>;
     }
     const nested = findValueChange(props.children);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+/** The MenuRadioGroup whose MenuGroupLabel matches, for groups that are not PullRequestFilterRadioGroup. */
+function findMenuRadioGroupByGroupLabel(
+  node: ReactNode,
+  groupLabel: string,
+):
+  | ReactElement<{ readonly children?: ReactNode; readonly onValueChange: (value: string) => void }>
+  | undefined {
+  for (const child of Children.toArray(node)) {
+    if (!isValidElement(child)) continue;
+    const props = child.props as {
+      readonly children?: ReactNode;
+      readonly onValueChange?: (value: string) => void;
+    };
+    const labels = textOf(props.children);
+    if (props.onValueChange && labels.includes(groupLabel)) {
+      return child as ReactElement<{
+        readonly children?: ReactNode;
+        readonly onValueChange: (value: string) => void;
+      }>;
+    }
+    const nested = findMenuRadioGroupByGroupLabel(props.children, groupLabel);
     if (nested) return nested;
   }
   return undefined;
@@ -74,6 +107,13 @@ function menu(overrides: Partial<Parameters<typeof PullRequestFiltersMenu>[0]>) 
 }
 
 describe("pull request filters menu", () => {
+  it("always offers the Authors group, even with no saved focus teams", () => {
+    const rendered = textOf(menu({ focusTeams: [] }));
+    expect(rendered).toContain("Authors");
+    expect(rendered).toContain("All authors");
+    expect(rendered).toContain("Me");
+  });
+
   it("does not emit a change when the selected state is chosen again", () => {
     const onState = vi.fn();
     const group = findValueChange(findLabeledGroup(menu({ onState }), "State"));
@@ -129,7 +169,7 @@ describe("pull request filters menu", () => {
       projectEnvironmentId: environmentId,
       onProject,
     });
-    const radioGroup = findValueChange(view);
+    const radioGroup = findMenuRadioGroupByGroupLabel(view, "Project");
     expect(radioGroup).toBeDefined();
 
     radioGroup?.props.onValueChange(pullRequestProjectKey({ id: projectId, environmentId }));
@@ -159,7 +199,7 @@ describe("pull request filters menu", () => {
       ],
       onProject,
     });
-    const radioGroup = findValueChange(view);
+    const radioGroup = findMenuRadioGroupByGroupLabel(view, "Project");
     expect(radioGroup).toBeDefined();
 
     radioGroup?.props.onValueChange(

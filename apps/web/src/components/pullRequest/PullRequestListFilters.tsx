@@ -6,6 +6,7 @@ import type {
   PullRequestListState,
   SourceControlProviderKind,
 } from "@t3tools/contracts";
+import type { PullRequestFocusTeam } from "@t3tools/contracts/settings";
 import {
   CircleCheckIcon,
   CircleDashedIcon,
@@ -18,6 +19,8 @@ import {
   ListFilterIcon,
   LoaderIcon,
   SearchIcon,
+  UserIcon,
+  UsersIcon,
 } from "lucide-react";
 import type { ElementType } from "react";
 
@@ -110,6 +113,8 @@ const ALL_HOSTS_VALUE = "";
 const ALL_SERVERS_VALUE = "";
 /** The unset value of each narrowing group, which no filter of theirs is named after. */
 const UNFILTERED_VALUE = "all";
+/** MenuRadioGroup wants a string; no focus team wears the one value no team id can be. */
+const ALL_FOCUS_TEAMS_VALUE = "";
 /**
  * A project's own radio value, carrying the server along with the id: the id alone is only
  * unique within its own server, so two rows sharing one would otherwise both read as checked.
@@ -208,6 +213,9 @@ export function PullRequestFiltersMenu({
   projectEnvironmentId,
   unavailable,
   onProject,
+  focusTeams,
+  focusTeamId,
+  onFocusTeam,
 }: {
   state: PullRequestListState;
   stateOptions: ReadonlyArray<PullRequestFilterOption<PullRequestListState>>;
@@ -253,6 +261,10 @@ export function PullRequestFiltersMenu({
   unavailable: ReadonlyMap<string, string>;
   /** The environment comes with the project id, since picking a row picks a specific server's copy of it. */
   onProject: (projectId: ProjectId | undefined, environmentId: EnvironmentId | undefined) => void;
+  /** Client-local author groups configured in Settings → Source Control. */
+  focusTeams: ReadonlyArray<PullRequestFocusTeam>;
+  focusTeamId: string | undefined;
+  onFocusTeam: (teamId: string | undefined) => void;
 }) {
   const filtered =
     state !== "open" ||
@@ -260,6 +272,7 @@ export function PullRequestFiltersMenu({
     host !== undefined ||
     server !== undefined ||
     projectId !== undefined ||
+    focusTeamId !== undefined ||
     Object.keys(filters).length > 0;
   /**
    * Rebuilt rather than spread so an unfiltered group leaves the record instead of lingering in
@@ -326,6 +339,39 @@ export function PullRequestFiltersMenu({
           options={CHECKS_OPTIONS}
           onChange={(next) => onFilters(withFilter("checks", next))}
         />
+        {focusTeams.length > 0 ? (
+          <>
+            <MenuSeparator />
+            <MenuRadioGroup
+              value={focusTeamId ?? ALL_FOCUS_TEAMS_VALUE}
+              onValueChange={(next) => {
+                onFocusTeam(next === ALL_FOCUS_TEAMS_VALUE ? undefined : next);
+              }}
+            >
+              <MenuGroupLabel>Authors</MenuGroupLabel>
+              <MenuRadioItem value={ALL_FOCUS_TEAMS_VALUE}>
+                <span className="flex min-w-0 items-center gap-2">
+                  <LayersIcon aria-hidden className="size-3.5" />
+                  All authors
+                </span>
+              </MenuRadioItem>
+              <MenuRadioItem value="me">
+                <span className="flex min-w-0 items-center gap-2">
+                  <UserIcon aria-hidden className="size-3.5" />
+                  Me
+                </span>
+              </MenuRadioItem>
+              {focusTeams.map((team) => (
+                <MenuRadioItem key={team.id} value={team.id}>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <UsersIcon aria-hidden className="size-3.5" />
+                    <span className="min-w-0 truncate">{team.name}</span>
+                  </span>
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+          </>
+        ) : null}
         {hostOptions.length > 2 ? (
           <>
             <MenuSeparator />

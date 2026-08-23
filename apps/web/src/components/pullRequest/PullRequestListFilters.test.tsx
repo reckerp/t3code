@@ -66,6 +66,9 @@ function menu(overrides: Partial<Parameters<typeof PullRequestFiltersMenu>[0]>) 
     projectEnvironmentId: undefined,
     unavailable: new Map(),
     onProject: () => undefined,
+    focusTeams: [],
+    focusTeamId: undefined,
+    onFocusTeam: () => undefined,
     ...overrides,
   });
 }

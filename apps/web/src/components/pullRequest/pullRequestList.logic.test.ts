@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   filterPullRequestsByInvolvement,
+  filterPullRequestsByFocusTeam,
   findScopedProject,
   mergePullRequestLists,
   pullRequestEntryKey,
@@ -11,6 +12,7 @@ import {
   matchesPullRequestFilters,
   matchesPullRequestQuery,
   parsePullRequestQuery,
+  parsePullRequestFocusTeamMembers,
   mergePullRequestDiffStats,
   narrowPullRequestsToFilters,
   partitionPullRequestsWithPriority,
@@ -1013,5 +1015,32 @@ describe("the priority groups against a paginated feed", () => {
     expect(
       groups.find((group) => group.key === "others")?.entries.map((row) => row.number),
     ).toEqual([6123]);
+  });
+});
+
+describe("pull request focus team filtering", () => {
+  const entries = [
+    entry({ number: 1, author: { login: "alice", name: null, avatarUrl: null } }),
+    entry({ number: 2, author: { login: "Bob", name: null, avatarUrl: null } }),
+    entry({ number: 3, author: { login: "carol", name: null, avatarUrl: null } }),
+  ];
+
+  it("keeps rows whose author is in the focus team, case-insensitively", () => {
+    expect(
+      filterPullRequestsByFocusTeam(entries, ["Alice", "carol"]).map((row) => row.number),
+    ).toEqual([1, 3]);
+  });
+
+  it("returns every row when no focus team is active", () => {
+    expect(filterPullRequestsByFocusTeam(entries, undefined)).toEqual(entries);
+  });
+
+  it("parses pasted logins on commas, spaces, and newlines", () => {
+    expect(parsePullRequestFocusTeamMembers("alice, bob\ncarol  dave")).toEqual([
+      "alice",
+      "bob",
+      "carol",
+      "dave",
+    ]);
   });
 });

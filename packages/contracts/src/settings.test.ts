@@ -115,6 +115,20 @@ describe("ClientSettings sidebar", () => {
   });
 });
 
+describe("ClientSettings pull request focus teams", () => {
+  it("defaults to an empty list", () => {
+    expect(decodeClientSettings({}).pullRequestFocusTeams).toEqual([]);
+  });
+
+  it("decodes a saved focus team", () => {
+    expect(
+      decodeClientSettings({
+        pullRequestFocusTeams: [{ id: "platform-abc", name: "Platform", members: ["alice", "bob"] }],
+      }).pullRequestFocusTeams,
+    ).toEqual([{ id: "platform-abc", name: "Platform", members: ["alice", "bob"] }]);
+  });
+});
+
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
   it("defaults text generation to Luna at low reasoning effort", () => {
     expect(DEFAULT_SERVER_SETTINGS.textGenerationModelSelection).toEqual({

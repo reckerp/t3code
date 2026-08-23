@@ -55,6 +55,23 @@ export const SidebarThreadPreviewCount = Schema.Int.check(
 );
 export type SidebarThreadPreviewCount = typeof SidebarThreadPreviewCount.Type;
 export const DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT: SidebarThreadPreviewCount = 6;
+
+export const MAX_PULL_REQUEST_FOCUS_TEAMS = 20;
+export const MAX_PULL_REQUEST_FOCUS_TEAM_MEMBERS = 50;
+export const PullRequestFocusTeamId = TrimmedNonEmptyString.check(Schema.isMaxLength(64));
+export type PullRequestFocusTeamId = typeof PullRequestFocusTeamId.Type;
+/** GitHub login length is 39; other hosts are similar. */
+export const PullRequestFocusTeamMember = TrimmedNonEmptyString.check(Schema.isMaxLength(39));
+export type PullRequestFocusTeamMember = typeof PullRequestFocusTeamMember.Type;
+
+export const PullRequestFocusTeam = Schema.Struct({
+  id: PullRequestFocusTeamId,
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
+  members: Schema.Array(PullRequestFocusTeamMember).check(
+    Schema.isMaxLength(MAX_PULL_REQUEST_FOCUS_TEAM_MEMBERS),
+  ),
+});
+export type PullRequestFocusTeam = typeof PullRequestFocusTeam.Type;
 export const MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS = 1;
 export const MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS = 90;
 export const SidebarAutoSettleAfterDays = Schema.Number.check(
@@ -243,6 +260,13 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TIMESTAMP_FORMAT)),
   ),
   wordWrap: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /**
+   * Named author groups for narrowing the pull request list to people you care about.
+   * Client-local because they are a personal view over host data, not workspace state.
+   */
+  pullRequestFocusTeams: Schema.Array(PullRequestFocusTeam)
+    .check(Schema.isMaxLength(MAX_PULL_REQUEST_FOCUS_TEAMS))
+    .pipe(Schema.withDecodingDefault(Effect.succeed([]))),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
@@ -913,5 +937,8 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),
   timestampFormat: Schema.optionalKey(TimestampFormat),
   wordWrap: Schema.optionalKey(Schema.Boolean),
+  pullRequestFocusTeams: Schema.optionalKey(
+    Schema.Array(PullRequestFocusTeam).check(Schema.isMaxLength(MAX_PULL_REQUEST_FOCUS_TEAMS)),
+  ),
 });
 export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

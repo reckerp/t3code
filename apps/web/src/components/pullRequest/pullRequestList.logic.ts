@@ -7,6 +7,7 @@ import {
   PullRequestListResult,
   resolvePullRequestAuthorFilter,
 } from "@t3tools/contracts";
+import type { PullRequestFocusTeam } from "@t3tools/contracts/settings";
 import type {
   PullRequestDiffStat,
   PullRequestInvolvement,
@@ -794,4 +795,53 @@ export function withDiffStat<
   if (entry.additions !== 0 || entry.deletions !== 0) return entry;
   const stat = statsByRow.get(diffStatKey(entry));
   return stat === undefined ? entry : { ...entry, ...stat };
+}
+
+function normalizeLogin(value: string | null | undefined): string | null {
+  const trimmed = value?.trim().toLowerCase() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Whether a row's author is one of the named logins. Case-insensitive. */
+export function matchesPullRequestFocusTeam(
+  entry: PullRequestListEntry,
+  members: ReadonlyArray<string>,
+): boolean {
+  const author = normalizeLogin(entry.author?.login);
+  if (author === null) return false;
+  const normalizedMembers = new Set(
+    members.map((member) => normalizeLogin(member)).filter((member) => member !== null),
+  );
+  return normalizedMembers.has(author);
+}
+
+export function filterPullRequestsByFocusTeam<Entry extends PullRequestListEntry>(
+  entries: ReadonlyArray<Entry>,
+  members: ReadonlyArray<string> | undefined,
+): ReadonlyArray<Entry> {
+  if (members === undefined || members.length === 0) return entries;
+  return entries.filter((entry) => matchesPullRequestFocusTeam(entry, members));
+}
+
+export function findPullRequestFocusTeam(
+  teams: ReadonlyArray<PullRequestFocusTeam>,
+  teamId: string | undefined,
+): PullRequestFocusTeam | undefined {
+  if (teamId === undefined || teamId.trim().length === 0) return undefined;
+  return teams.find((team) => team.id === teamId);
+}
+
+/** Split a pasted list of logins on commas, spaces, or newlines. */
+export function parsePullRequestFocusTeamMembers(raw: string): ReadonlyArray<string> {
+  const seen = new Set<string>();
+  const members: string[] = [];
+  for (const part of raw.split(/[\s,]+/u)) {
+    const trimmed = part.trim();
+    if (trimmed.length === 0) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    members.push(trimmed.slice(0, 39));
+  }
+  return members.slice(0, 50);
 }

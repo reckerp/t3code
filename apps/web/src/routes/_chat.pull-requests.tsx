@@ -30,6 +30,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 
 import {
   filterPullRequestsByInvolvement,
+  filterPullRequestsByFocusTeam,
+  findPullRequestFocusTeam,
   findScopedProject,
   groupPullRequestsByInvolvement,
   matchesPullRequestFilters,
@@ -82,6 +84,7 @@ import { Button } from "../components/ui/button";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../components/ui/menu";
 import { SidebarInset } from "../components/ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
+import { useClientSettings, useClientSettingsHydrated } from "../hooks/useSettings";
 import { useLiveRefresh } from "../hooks/useLiveRefresh";
 import {
   selectActiveRightPanelSurface,
@@ -136,6 +139,8 @@ export interface PullRequestsSearch {
   readonly draft?: "only" | "hide";
   readonly review?: NonNullable<PullRequestListFilters["review"]>;
   readonly checks?: NonNullable<PullRequestListFilters["checks"]>;
+  /** A focus team id from client settings, or `me` for the signed-in viewer's own pull requests. */
+  readonly focusTeam?: string;
 }
 
 // The state filters wear the same glyphs the rows do, so the two read as one vocabulary.
@@ -216,6 +221,9 @@ export const Route = createFileRoute("/_chat/pull-requests")({
       ? { review: raw.review }
       : {}),
     ...(raw.checks === "passing" || raw.checks === "failing" ? { checks: raw.checks } : {}),
+    ...(typeof raw.focusTeam === "string" && raw.focusTeam
+      ? { focusTeam: raw.focusTeam.slice(0, 64) }
+      : {}),
   }),
   component: PullRequestsRouteView,
 });
@@ -223,6 +231,14 @@ export const Route = createFileRoute("/_chat/pull-requests")({
 function PullRequestsRouteView() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
+  const focusTeams = useClientSettings((settings) => settings.pullRequestFocusTeams);
+  const settingsHydrated = useClientSettingsHydrated();
+  const activeFocusTeam = useMemo(
+    () => findPullRequestFocusTeam(focusTeams, search.focusTeam),
+    [focusTeams, search.focusTeam],
+  );
+  const focusTeamFilterActive = search.focusTeam === "me" || activeFocusTeam !== undefined;
+
   const { environments } = useEnvironments();
   // Every connected environment that has said it can list pull requests. Sorted, so the query
   // keys, the scope key and the stored snapshot all read the same whichever order the
@@ -429,12 +445,21 @@ function PullRequestsRouteView() {
             ...(next.draft ? { draft: next.draft } : {}),
             ...(next.review ? { review: next.review } : {}),
             ...(next.checks ? { checks: next.checks } : {}),
+            ...(next.focusTeam ? { focusTeam: next.focusTeam } : {}),
           };
         },
         replace: true,
       }),
     [navigate],
   );
+
+  useEffect(() => {
+    if (!settingsHydrated) return;
+    if (search.focusTeam === undefined || search.focusTeam === "me") return;
+    if (activeFocusTeam === undefined) {
+      updateSearch({ focusTeam: undefined });
+    }
+  }, [activeFocusTeam, search.focusTeam, settingsHydrated, updateSearch]);
 
   // Changing what the list contains must not leave a selection from the previous view open.
   // The project filter is untouched: it is the user's scope, not part of the selection.
@@ -997,6 +1022,12 @@ function PullRequestsRouteView() {
   const entries = useMemo(() => {
     const known = ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []);
     const involvementEntries = filterPullRequestsByInvolvement(known, viewers, search.involvement);
+    const focusTeamEntries =
+      search.focusTeam === "me"
+        ? filterPullRequestsByInvolvement(involvementEntries, viewers, "authored")
+        : activeFocusTeam === undefined
+          ? involvementEntries
+          : filterPullRequestsByFocusTeam(involvementEntries, activeFocusTeam.members);
     // The hosts search more than the row shows — a body, a review, a commit message — so once
     // their answer is in, narrowing it again here would throw away matches the reader asked for.
     // The local pass stands in for the answer that has not arrived yet, and for the hosts that
@@ -1006,10 +1037,10 @@ function PullRequestsRouteView() {
     // a host with no filter of its own answers unnarrowed, and so does one whose answer for the
     // new filters has not arrived yet. Checks are absent here, because no row carries them.
     const narrowedEntries = hasLocalFilters
-      ? involvementEntries.filter((entry) =>
+      ? focusTeamEntries.filter((entry) =>
           matchesPullRequestFilters(entry, localFilters, pullRequestEntryViewer(entry, viewers)),
         )
-      : involvementEntries;
+      : focusTeamEntries;
     // Newest update first once nothing is typed, so a list merged from several hosts reads in
     // one order rather than in each host's. With a search on, the relevance ranking above is
     // the order, and re-sorting by date here would undo it.
@@ -1025,12 +1056,14 @@ function PullRequestsRouteView() {
         matchesPullRequestQuery(entry, typedParsed.text),
     );
   }, [
+    activeFocusTeam,
     filterKey,
     hasLocalFilters,
     localFilters,
     listData,
     ordered,
     querySettled,
+    search.focusTeam,
     search.involvement,
     searchingHosts,
     showingCarried,
@@ -1106,12 +1139,20 @@ function PullRequestsRouteView() {
     // The priority reads answer the same question the feed does, so they take the same local
     // narrowing: a host that cannot filter for itself would otherwise put rows into Authored
     // that the filters above just took out of the feed.
-    const narrow = (rows: ReadonlyArray<EnvironmentPullRequestEntry> | undefined) =>
-      rows === undefined || !hasLocalFilters
-        ? rows
-        : rows.filter((entry) =>
+    const narrow = (rows: ReadonlyArray<EnvironmentPullRequestEntry> | undefined) => {
+      if (rows === undefined) return rows;
+      const focusFiltered =
+        search.focusTeam === "me"
+          ? filterPullRequestsByInvolvement(rows, viewers, "authored")
+          : activeFocusTeam === undefined
+            ? rows
+            : filterPullRequestsByFocusTeam(rows, activeFocusTeam.members);
+      return !hasLocalFilters
+        ? focusFiltered
+        : focusFiltered.filter((entry) =>
             matchesPullRequestFilters(entry, localFilters, pullRequestEntryViewer(entry, viewers)),
           );
+    };
     const authored = narrow(
       partitionsWanted ? (authoredQuery.data?.entries ?? held?.authored) : undefined,
     );
@@ -1123,6 +1164,7 @@ function PullRequestsRouteView() {
     }
     return partitionPullRequestsWithPriority(entries, authored, reviewing);
   }, [
+    activeFocusTeam,
     hasLocalFilters,
     localFilters,
     authoredQuery.data?.entries,
@@ -1132,6 +1174,7 @@ function PullRequestsRouteView() {
     partitionsWanted,
     reviewingQuery.data?.entries,
     scopeKey,
+    search.focusTeam,
     search.involvement,
     viewers,
   ]);
@@ -1350,7 +1393,9 @@ function PullRequestsRouteView() {
             search.state !== "open" ||
             search.involvement !== "all" ||
             scopedProjectId !== undefined ||
-            search.host !== undefined
+            search.host !== undefined ||
+            focusTeamFilterActive ||
+            hasLocalFilters
           }
           searching={typedQuery.length > 0 && (!querySettled || showingCarried)}
           canLoadMore={listData?.truncated === true && (canContinue || pageSize < MAX_PAGE_SIZE)}
@@ -1479,6 +1524,9 @@ function PullRequestsRouteView() {
       onProject={(projectId, environmentId) =>
         updateListScope(environmentId === undefined ? { projectId } : { projectId, environmentId })
       }
+      focusTeams={focusTeams}
+      focusTeamId={search.focusTeam}
+      onFocusTeam={(teamId) => updateListScope({ focusTeam: teamId })}
     />
   );
   const columnProps = {

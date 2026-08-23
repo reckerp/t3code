@@ -7,6 +7,7 @@ import {
   PullRequestListResult,
   resolvePullRequestAuthorFilter,
 } from "@t3tools/contracts";
+import { PULL_REQUEST_FOCUS_TEAM_ME, type PullRequestFocusTeam } from "@t3tools/contracts/settings";
 import type {
   PullRequestDiffStat,
   PullRequestInvolvement,
@@ -311,8 +312,8 @@ export function matchesPullRequestFilters(
   filters: PullRequestListFilters,
   viewer?: string | null,
 ): boolean {
-  const labels = entry.labels.map((label) => label.name.trim().toLowerCase());
-  const holds = (label: string) => labels.includes(label.trim().toLowerCase());
+  const labels = new Set(entry.labels.map((label) => label.name.trim().toLowerCase()));
+  const holds = (label: string) => labels.has(label.trim().toLowerCase());
   return (
     (filters.draft === undefined || entry.isDraft === (filters.draft === "only")) &&
     (filters.review === undefined ||
@@ -794,4 +795,77 @@ export function withDiffStat<
   if (entry.additions !== 0 || entry.deletions !== 0) return entry;
   const stat = statsByRow.get(diffStatKey(entry));
   return stat === undefined ? entry : { ...entry, ...stat };
+}
+
+function normalizeLogin(value: string | null | undefined): string | null {
+  return normalize(value);
+}
+
+/** Whether involvement and the author filter disagree in a way that can only be empty. */
+export function pullRequestAuthorFiltersConflict(
+  involvement: PullRequestInvolvement,
+  focusTeam: string | undefined,
+): boolean {
+  return focusTeam === PULL_REQUEST_FOCUS_TEAM_ME && involvement === "reviewing";
+}
+
+/** Whether a row's author is one of the named logins. Case-insensitive. */
+export function matchesPullRequestFocusTeam(
+  entry: PullRequestListEntry,
+  members: ReadonlyArray<string>,
+): boolean {
+  const author = normalizeLogin(entry.author?.login);
+  if (author === null) return false;
+  const normalizedMembers = new Set(
+    members.map((member) => normalizeLogin(member)).filter((member) => member !== null),
+  );
+  return normalizedMembers.has(author);
+}
+
+export function filterPullRequestsByFocusTeam<Entry extends PullRequestListEntry>(
+  entries: ReadonlyArray<Entry>,
+  members: ReadonlyArray<string> | undefined,
+): ReadonlyArray<Entry> {
+  if (members === undefined) return entries;
+  if (members.length === 0) return [];
+  return entries.filter((entry) => matchesPullRequestFocusTeam(entry, members));
+}
+
+export function findPullRequestFocusTeam(
+  teams: ReadonlyArray<PullRequestFocusTeam>,
+  teamId: string | undefined,
+): PullRequestFocusTeam | undefined {
+  if (teamId === undefined || teamId.trim().length === 0) return undefined;
+  if (teamId === PULL_REQUEST_FOCUS_TEAM_ME) return undefined;
+  return teams.find((team) => team.id === teamId);
+}
+
+/** Split a pasted list of logins on commas, spaces, or newlines. */
+export function parsePullRequestFocusTeamMembers(raw: string): ReadonlyArray<string> {
+  const seen = new Set<string>();
+  const members: string[] = [];
+  for (const part of raw.split(/[\s,]+/u)) {
+    const trimmed = part.trim().replace(/^@+/u, "");
+    if (trimmed.length === 0) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    members.push(trimmed.slice(0, 39));
+  }
+  return members.slice(0, 50);
+}
+
+export function applyPullRequestAuthorFilter<Entry extends PullRequestListEntry>(
+  entries: ReadonlyArray<Entry>,
+  viewers: PullRequestViewers,
+  focusTeam: string | undefined,
+  team: PullRequestFocusTeam | undefined,
+  settingsHydrated: boolean,
+): ReadonlyArray<Entry> {
+  if (focusTeam === PULL_REQUEST_FOCUS_TEAM_ME) {
+    return filterPullRequestsByInvolvement(entries, viewers, "authored");
+  }
+  if (focusTeam === undefined) return entries;
+  if (!settingsHydrated || team === undefined) return entries;
+  return filterPullRequestsByFocusTeam(entries, team.members);
 }

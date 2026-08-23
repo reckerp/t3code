@@ -68,6 +68,7 @@ function BranchMark({ joined }: { joined: boolean }) {
 export function PullRequestListEmptyState({
   query,
   filtered,
+  filterHint,
   searching,
   hasProjects,
   canLoadMore,
@@ -81,6 +82,8 @@ export function PullRequestListEmptyState({
   query: string;
   /** True when a state, involvement or project filter is narrowing the list. */
   filtered: boolean;
+  /** When set, explains why competing filters cannot match anything. */
+  filterHint?: string | undefined;
   /** A search is in flight; the rows on screen are the previous answer. */
   searching: boolean;
   /**
@@ -163,9 +166,10 @@ export function PullRequestListEmptyState({
       <EmptyHeader>
         <EmptyTitle>{filtered ? "Nothing under these filters" : "No pull requests"}</EmptyTitle>
         <EmptyDescription>
-          {filtered
-            ? "Widen the state, involvement or project filter to see more."
-            : "Pull requests from every project in this workspace appear here."}
+          {filterHint ??
+            (filtered
+              ? "Widen the state, involvement or project filter to see more."
+              : "Pull requests from every project in this workspace appear here.")}
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent className="flex-row flex-wrap justify-center gap-2">

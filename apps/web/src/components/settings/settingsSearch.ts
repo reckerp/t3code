@@ -239,6 +239,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/source-control",
   },
   {
+    id: "pull-request-focus-teams",
+    title: "Pull request focus teams",
+    to: "/settings/source-control",
+    targetId: "pull-request-focus-teams",
+  },
+  {
     id: "remote-environments",
     title: "Remote environments",
     to: "/settings/connections",

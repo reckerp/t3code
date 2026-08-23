@@ -54,6 +54,7 @@ import {
   type Icon,
 } from "../Icons";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
+import { PullRequestFocusTeamsSettingsSection } from "./PullRequestFocusTeamsSettings";
 import { SourceControlWritingSettingsSection } from "./SourceControlWritingSettings";
 import {
   PolicyTooltip,
@@ -582,6 +583,7 @@ export function SourceControlSettingsPanel() {
       )}
 
       {isPrimaryEnvironment ? <SourceControlWritingSettingsSection /> : null}
+      <PullRequestFocusTeamsSettingsSection />
     </SettingsPageContainer>
   );
 }

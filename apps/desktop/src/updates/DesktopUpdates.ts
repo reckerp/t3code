@@ -27,6 +27,7 @@ import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import * as MacUnsignedUpdateInstaller from "./macUnsignedInstall.ts";
 import { normalizeDesktopUpdateReleaseNotes } from "./releaseNotes.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updateChannels.ts";
 import {
@@ -56,6 +57,7 @@ const UpdateInfo = Schema.Struct({
   // fail the decode and block the update state transition. The shape is
   // validated defensively in normalizeDesktopUpdateReleaseNotes.
   releaseNotes: Schema.optional(Schema.Unknown),
+  downloadedFile: Schema.optional(Schema.String),
 });
 
 const DownloadProgressInfo = Schema.Struct({
@@ -255,11 +257,13 @@ export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
+  const macUnsignedUpdateInstaller = yield* MacUnsignedUpdateInstaller.MacUnsignedUpdateInstaller;
 
   const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
   const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
   const updaterConfiguredRef = yield* Ref.make(false);
   const lastLoggedDownloadMilestoneRef = yield* Ref.make(-1);
+  const downloadedUpdateFileRef = yield* Ref.make<Option.Option<string>>(Option.none());
   const updateStateRef = yield* Ref.make<DesktopUpdateState>(
     createInitialDesktopUpdateState(
       environment.appVersion,
@@ -484,6 +488,17 @@ export const make = Effect.gen(function* () {
     yield* Ref.set(desktopState.quitting, true);
 
     return yield* Effect.gen(function* () {
+      const appBundlePath = MacUnsignedUpdateInstaller.resolveMacAppBundlePath(environment.appPath);
+      const downloadedFile = yield* Ref.get(downloadedUpdateFileRef);
+      const signatureKind =
+        appBundlePath === null
+          ? ("developer-id" as const)
+          : yield* macUnsignedUpdateInstaller.signatureKind(appBundlePath);
+      const useZipSwap =
+        Option.isSome(downloadedFile) &&
+        appBundlePath !== null &&
+        MacUnsignedUpdateInstaller.shouldUseMacZipSwapInstall(environment.platform, signatureKind);
+
       // Stop every backend in the pool, not just the primary. With
       // parallel WSL + Windows backends, leaving the WSL instance up
       // means quitAndInstall's app.quit() exits before the pool's
@@ -498,10 +513,18 @@ export const make = Effect.gen(function* () {
         { concurrency: "unbounded" },
       );
       yield* electronWindow.destroyAll;
-      yield* electronUpdater.quitAndInstall({
-        isSilent: true,
-        isForceRunAfter: true,
-      });
+      if (useZipSwap && Option.isSome(downloadedFile) && appBundlePath !== null) {
+        yield* logUpdaterInfo("installing unsigned macOS update from downloaded zip");
+        yield* macUnsignedUpdateInstaller.install({
+          zipPath: downloadedFile.value,
+          appBundlePath,
+        });
+      } else {
+        yield* electronUpdater.quitAndInstall({
+          isSilent: true,
+          isForceRunAfter: true,
+        });
+      }
       return { accepted: true, completed: false };
     }).pipe(
       Effect.catchTags({
@@ -516,6 +539,18 @@ export const make = Effect.gen(function* () {
               channel: error.channel,
               isSilent: error.isSilent,
               isForceRunAfter: error.isForceRunAfter,
+            });
+            return { accepted: true, completed: false };
+          },
+        ),
+        MacUnsignedUpdateInstallError: Effect.fn("desktop.updates.handleUnsignedInstallFailure")(
+          function* (error) {
+            yield* resetInstallAction;
+            yield* updateState((current) =>
+              reduceDesktopUpdateStateOnInstallFailure(current, error.message),
+            );
+            yield* logUpdaterError(error.message, {
+              errorTag: error._tag,
             });
             return { accepted: true, completed: false };
           },
@@ -704,6 +739,10 @@ export const make = Effect.gen(function* () {
       Effect.flatMap(
         Effect.fn("desktop.updates.applyUpdateDownloaded")(function* (info) {
           const state = yield* Ref.get(updateStateRef);
+          yield* Ref.set(
+            downloadedUpdateFileRef,
+            info.downloadedFile ? Option.some(info.downloadedFile) : Option.none(),
+          );
           yield* setState(reduceDesktopUpdateStateOnDownloadComplete(state, info.version));
           yield* logUpdaterInfo("update downloaded", { version: info.version });
         }),

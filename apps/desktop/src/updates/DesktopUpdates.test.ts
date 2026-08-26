@@ -21,6 +21,7 @@ import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopUpdates from "./DesktopUpdates.ts";
+import * as MacUnsignedUpdateInstaller from "./macUnsignedInstall.ts";
 
 interface UpdatesHarnessOptions {
   readonly checkForUpdates?: Effect.Effect<
@@ -32,17 +33,21 @@ interface UpdatesHarnessOptions {
   readonly setDisableDifferentialDownload?: Effect.Effect<void>;
   readonly stopBackend?: Effect.Effect<void>;
   readonly env?: Record<string, string | undefined>;
+  readonly appPath?: string;
+  readonly macSignatureKind?: MacUnsignedUpdateInstaller.MacCodeSignatureKind;
 }
 
 const flushCallbacks = Effect.yieldNow;
 
 function makeHarness(options: UpdatesHarnessOptions = {}) {
   let checkCount = 0;
+  let quitAndInstallCount = 0;
   let allowDowngrade = false;
   let fullChangelog = false;
   const feedUrls: ElectronUpdater.ElectronUpdaterFeedUrl[] = [];
   const listeners = new Map<string, Set<(...args: readonly unknown[]) => void>>();
   const sentStates: DesktopUpdateState[] = [];
+  const zipSwapInstalls: Array<{ readonly zipPath: string; readonly appBundlePath: string }> = [];
 
   const addListener = (eventName: string, listener: (...args: readonly unknown[]) => void) => {
     const eventListeners = listeners.get(eventName) ?? new Set();
@@ -84,7 +89,10 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
       checkCount += 1;
     }).pipe(Effect.andThen(options.checkForUpdates ?? Effect.void)),
     downloadUpdate: Effect.void,
-    quitAndInstall: () => Effect.void,
+    quitAndInstall: () =>
+      Effect.sync(() => {
+        quitAndInstallCount += 1;
+      }),
     on: (eventName, listener) =>
       Effect.acquireRelease(
         Effect.sync(() => {
@@ -136,7 +144,7 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
     platform: "darwin",
     processArch: "x64",
     appVersion: "1.2.3",
-    appPath: "/repo",
+    appPath: options.appPath ?? "/repo",
     isPackaged: true,
     resourcesPath: "/missing/resources",
     runningUnderArm64Translation: false,
@@ -190,12 +198,21 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
         } satisfies DesktopAppSettings.DesktopAppSettings["Service"])
       : DesktopAppSettings.layer;
 
+  const macInstallerLayer = Layer.succeed(MacUnsignedUpdateInstaller.MacUnsignedUpdateInstaller, {
+    signatureKind: () => Effect.succeed(options.macSignatureKind ?? "developer-id"),
+    install: (input) =>
+      Effect.sync(() => {
+        zipSwapInstalls.push(input);
+      }),
+  } satisfies MacUnsignedUpdateInstaller.MacUnsignedUpdateInstaller["Service"]);
+
   const layer = DesktopUpdates.layer.pipe(
     Layer.provideMerge(updaterLayer),
     Layer.provideMerge(windowLayer),
     Layer.provideMerge(backendLayer),
     Layer.provideMerge(DesktopState.layer),
     Layer.provideMerge(settingsLayer),
+    Layer.provideMerge(macInstallerLayer),
     Layer.provideMerge(
       DesktopConfig.layerTest({
         T3CODE_HOME: `/tmp/t3-desktop-updates-test-${process.pid}`,
@@ -211,6 +228,8 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
   return {
     layer,
     checkCount: () => checkCount,
+    quitAndInstallCount: () => quitAndInstallCount,
+    zipSwapInstalls,
     feedUrls: () => feedUrls,
     fullChangelog: () => fullChangelog,
     listenerCount: () =>
@@ -528,6 +547,59 @@ describe("DesktopUpdates", () => {
       ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
     }),
   );
+
+  it.effect("installs unsigned macOS updates from the downloaded zip instead of Squirrel", () => {
+    const harness = makeHarness({
+      appPath: "/Applications/T3 Code (Nightly).app/Contents/Resources/app.asar",
+      macSignatureKind: "adhoc",
+    });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        harness.emit("update-downloaded", {
+          version: "1.2.4",
+          downloadedFile: "/tmp/t3-update.zip",
+        });
+        yield* flushCallbacks;
+
+        const result = yield* updates.install;
+        assert.isTrue(result.accepted);
+        assert.equal(harness.quitAndInstallCount(), 0);
+        assert.deepEqual(harness.zipSwapInstalls, [
+          {
+            zipPath: "/tmp/t3-update.zip",
+            appBundlePath: "/Applications/T3 Code (Nightly).app",
+          },
+        ]);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("keeps Developer ID macOS installs on the native updater", () => {
+    const harness = makeHarness({
+      appPath: "/Applications/T3 Code.app/Contents/Resources/app.asar",
+      macSignatureKind: "developer-id",
+    });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        harness.emit("update-downloaded", {
+          version: "1.2.4",
+          downloadedFile: "/tmp/t3-update.zip",
+        });
+        yield* flushCallbacks;
+
+        const result = yield* updates.install;
+        assert.isTrue(result.accepted);
+        assert.equal(harness.quitAndInstallCount(), 1);
+        assert.deepEqual(harness.zipSwapInstalls, []);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
 
   it.effect("keeps raw updater event failures out of update state", () => {
     const harness = makeHarness();

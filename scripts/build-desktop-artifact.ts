@@ -2125,6 +2125,18 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         },
       ],
       ...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),
+      // Unsigned Electron bundles keep Electron's Developer ID signature on
+      // nested frameworks after asar injection, which macOS treats as a
+      // broken signature ("app is damaged"). Ad-hoc re-sign (`identity: "-"`)
+      // replaces that with a valid signature. Gatekeeper still quarantines
+      // GitHub downloads; users clear it with `xattr -cr`.
+      ...(signed
+        ? {}
+        : {
+            identity: "-",
+            hardenedRuntime: false,
+            gatekeeperAssess: false,
+          }),
       ...(macPasskeySigning
         ? {
             entitlements: macPasskeySigning.entitlementsPath,

@@ -256,6 +256,7 @@ jobs:
               args+=(--signed)
             else
               echo "macOS signing disabled (missing one or more Apple signing secrets)."
+              export CSC_IDENTITY_AUTO_DISCOVERY=false
             fi
           else
             echo "Signing disabled for ${{ matrix.platform }}."
@@ -364,7 +365,17 @@ jobs:
           body: |
             Desktop builds from this repository.
 
-            **macOS:** Download the `arm64` DMG on Apple Silicon (M1 and later) or the `x64` DMG on Intel Macs. Unsigned builds are blocked by Gatekeeper until you right-click the app and choose Open.
+            **macOS:** Download the `arm64` DMG on Apple Silicon (M1 and later) or the `x64` DMG on Intel Macs.
+
+            Unsigned GitHub builds are quarantined by Gatekeeper. After dragging the app to Applications, run:
+
+            ```
+            xattr -cr "/Applications/T3 Code (Nightly).app"
+            ```
+
+            Stable builds are named `T3 Code (Alpha).app`. Then open the app normally.
+
+            In-app updates on these unsigned Mac builds replace the app from the downloaded zip. Install this build from the DMG once; later updates can use the in-app button.
 
             **Linux:** Use the `x64` AppImage when present.
           generate_release_notes: true

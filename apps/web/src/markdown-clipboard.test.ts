@@ -22,7 +22,7 @@ class FakeElement {
   constructor(
     readonly tagName: string,
     private readonly classNames: ReadonlyArray<string> = [],
-    private readonly attributes: Record<string, string> = {},
+    private readonly attributes: Readonly<Record<string, string>> = {},
   ) {}
 
   get localName(): string {
@@ -43,7 +43,7 @@ class FakeElement {
   }
 
   hasAttribute(name: string): boolean {
-    return name in this.attributes;
+    return Object.hasOwn(this.attributes, name);
   }
 }
 
@@ -104,6 +104,21 @@ describe("serializeRenderedMarkdownFragment", () => {
 
     expect(serializeRenderedMarkdownFragment(asNode(container))).toBe(
       "See:\n\n```mermaid\ngraph TD\n  A --> B\n```",
+    );
+  });
+
+  it("uses a rendered card's explicit Markdown copy representation", () => {
+    const card = new FakeElement("DIV", [], {
+      "data-markdown-copy": "Hello World (Document template)\n\n",
+    }).append(
+      new FakeElement("SPAN").append(new FakeText("Hello World")),
+      new FakeElement("SPAN").append(new FakeText("Document template")),
+      new FakeElement("BUTTON").append(new FakeText("Use template")),
+    );
+    const container = new FakeElement("DIV").append(card);
+
+    expect(serializeRenderedMarkdownFragment(asNode(container))).toBe(
+      "Hello World (Document template)",
     );
   });
 });

@@ -21,6 +21,7 @@ const clientSettings: ClientSettings = {
   confirmQuit: true,
   confirmThreadArchive: true,
   confirmThreadDelete: false,
+  confirmThreadUnpin: false,
   dismissedProviderUpdateNotificationKeys: [],
   diffIgnoreWhitespace: true,
   environmentIdentificationMode: "artwork",
@@ -50,6 +51,7 @@ const clientSettings: ClientSettings = {
   legacySidebarEnabled: false,
   timestampFormat: "24-hour",
   wordWrap: true,
+  pullRequestFocusTeams: [],
 };
 
 const decodeClientSettingsJson = Schema.decodeEffect(Schema.fromJsonString(ClientSettingsSchema));

@@ -7,6 +7,7 @@ vi.mock("../../hooks/useSettings", () => ({
   useClientSettings: (selector: (settings: { pullRequestFocusTeams: [] }) => unknown) =>
     selector({ pullRequestFocusTeams: [] }),
   useUpdateClientSettings: () => vi.fn(),
+  usePrimarySettingsAvailable: () => true,
 }));
 
 describe("PullRequestFocusTeamsSettingsSection", () => {

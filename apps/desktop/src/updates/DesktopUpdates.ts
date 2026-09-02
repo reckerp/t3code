@@ -646,15 +646,15 @@ export const make = Effect.gen(function* () {
                 return { accepted: true, completed: false, failed: true };
               },
             ),
-            MacUnsignedUpdateInstallError: Effect.fn("desktop.updates.handleUnsignedInstallFailure")(
-              function* (error) {
-                yield* recoverFailedInstall(error.message);
-                yield* logUpdaterError(error.message, {
-                  errorTag: error._tag,
-                });
-                return { accepted: true, completed: false, failed: true };
-              },
-            ),
+            MacUnsignedUpdateInstallError: Effect.fn(
+              "desktop.updates.handleUnsignedInstallFailure",
+            )(function* (error) {
+              yield* recoverFailedInstall(error.message);
+              yield* logUpdaterError(error.message, {
+                errorTag: error._tag,
+              });
+              return { accepted: true, completed: false, failed: true };
+            }),
           }),
           Effect.onInterrupt(() => resetInstallAction),
           Effect.catchCause((cause) =>

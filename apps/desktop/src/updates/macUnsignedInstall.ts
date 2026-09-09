@@ -11,7 +11,7 @@ const execFileAsync = NodeUtil.promisify(NodeChildProcess.execFile);
 
 export type MacCodeSignatureKind = "developer-id" | "adhoc" | "unsigned";
 
-export class MacUnsignedUpdateInstallError extends Schema.TaggedErrorClass<MacUnsignedUpdateInstallError>()(
+export class MacUnsignedUpdateInstallError extends Schema.TaggedError<MacUnsignedUpdateInstallError>()(
   "MacUnsignedUpdateInstallError",
   {
     zipPath: Schema.String,

@@ -455,6 +455,25 @@ describe("ServerSettings thread settlement", () => {
   });
 });
 
+describe("ClientSettings pull request merge methods", () => {
+  it("defaults to no project overrides and accepts supported methods", () => {
+    expect(decodeClientSettings({}).pullRequestMergeMethodOverrides).toEqual({});
+    expect(
+      decodeClientSettingsPatch({
+        pullRequestMergeMethodOverrides: { project: "squash" },
+      }).pullRequestMergeMethodOverrides,
+    ).toEqual({ project: "squash" });
+  });
+
+  it("rejects unsupported project merge methods", () => {
+    expect(() =>
+      decodeClientSettingsPatch({
+        pullRequestMergeMethodOverrides: { project: "fast-forward" },
+      }),
+    ).toThrow();
+  });
+});
+
 describe("ClientSettings pull request focus teams", () => {
   it("defaults to an empty list", () => {
     expect(decodeClientSettings({}).pullRequestFocusTeams).toEqual([]);
